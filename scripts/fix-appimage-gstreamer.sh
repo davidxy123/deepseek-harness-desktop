@@ -20,6 +20,7 @@ set -euo pipefail
 readonly GST_DIR=usr/lib/gstreamer-1.0
 readonly GST_HOOK=apprun-hooks/linuxdeploy-plugin-gstreamer.sh
 readonly WRONG_PREFIX='usr/lib/gstreamer1.0/gstreamer-1.0/'
+readonly WRONG_PREFIX_SED='usr/lib/gstreamer1\.0/gstreamer-1\.0/'
 readonly RIGHT_PREFIX='usr/lib/gstreamer-1.0/'
 readonly SCANNER_NAME=gst-plugin-scanner
 readonly PTP_HELPER_NAME=gst-ptp-helper
@@ -141,6 +142,11 @@ if [ ! -d "$tree" ]; then
   exit 1
 fi
 
+if [ ! -d "$tree/$GST_DIR" ]; then
+  echo "fix-appimage-gstreamer: $GST_DIR is missing from the AppDir" >&2
+  exit 1
+fi
+
 removed=()
 while IFS= read -r found; do
   rm -f "$found"
@@ -150,7 +156,7 @@ done < <(find "$tree/$GST_DIR" -maxdepth 1 -name 'libgstpython*.so' -print)
 hook_changed=0
 hook="$tree/$GST_HOOK"
 if [ -f "$hook" ] && grep -qF "$WRONG_PREFIX" "$hook"; then
-  sed -i "s|$WRONG_PREFIX|$RIGHT_PREFIX|g" "$hook"
+  sed -i "s|$WRONG_PREFIX_SED|$RIGHT_PREFIX|g" "$hook"
   hook_changed=1
 fi
 if [ -f "$hook" ] && ! grep -q '^export GST_PLUGIN_SCANNER=' "$hook"; then

@@ -11,8 +11,11 @@ fn main() {
             std::env::set_var("GST_PLUGIN_SCANNER", &scanner);
             std::env::set_var("GST_PLUGIN_SCANNER_1_0", &scanner);
         }
-        std::env::remove_var("PYTHONHOME");
-        std::env::remove_var("PYTHONPATH");
+        for name in ["PYTHONHOME", "PYTHONPATH"] {
+            if std::env::var_os(name).is_some_and(|value| value.to_string_lossy().contains(&appdir)) {
+                std::env::remove_var(name);
+            }
+        }
     }
 
     // 无 GUI 的补丁入口：E2E 的插件 L2 直接起 `dsh web`，需要把 npm 装来的核心

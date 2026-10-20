@@ -10,20 +10,22 @@
 export const MEDIA_RECORDER_SHIM_SCRIPT = `(() => {
   const Native = globalThis.MediaRecorder;
   if (typeof Native !== "function" || Native.__dshDesktopMimeDefault) return;
+  if (typeof Native.isTypeSupported !== "function") return;
   const ua = navigator.userAgent || "";
   if (ua.indexOf("Linux") < 0 || ua.indexOf("AppleWebKit") < 0 || /Chrome|Chromium/.test(ua)) return;
   const candidates = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm", "audio/ogg", "audio/mp4"];
   const pick = () => candidates.find((type) => Native.isTypeSupported(type));
-  function WrappedMediaRecorder(stream, options) {
-    const explicit = options !== undefined && options !== null && typeof options.mimeType === "string" && options.mimeType !== "";
-    if (!explicit) {
-      const mimeType = pick();
-      if (mimeType !== undefined) options = Object.assign({}, options, { mimeType });
+  const WrappedMediaRecorder = new Proxy(Native, {
+    construct(target, args, newTarget) {
+      const options = args[1];
+      const explicit = options !== undefined && options !== null && typeof options.mimeType === "string" && options.mimeType !== "";
+      const mimeType = explicit ? undefined : pick();
+      if (mimeType === undefined) return Reflect.construct(target, args, newTarget);
+      const next = args.slice();
+      next[1] = Object.assign({}, options, { mimeType });
+      return Reflect.construct(target, next, newTarget);
     }
-    return new Native(stream, options);
-  }
-  WrappedMediaRecorder.prototype = Native.prototype;
-  Object.setPrototypeOf(WrappedMediaRecorder, Native);
+  });
   Object.defineProperty(WrappedMediaRecorder, "__dshDesktopMimeDefault", { value: true });
   globalThis.MediaRecorder = WrappedMediaRecorder;
 })();`

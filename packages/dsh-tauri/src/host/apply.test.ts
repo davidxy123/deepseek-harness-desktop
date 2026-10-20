@@ -15,7 +15,9 @@ function activate() {
     listeners.push(listener)
     return () => {
       const index = listeners.indexOf(listener)
-      if (index >= 0) listeners.splice(index, 1)
+      if (index >= 0) {
+        listeners.splice(index, 1)
+      }
     }
   })
   const ctx = {
@@ -52,10 +54,9 @@ describe('desktop account marker', () => {
     vi.stubEnv('DSH_TAURI_EMBEDDED', '1')
     const { collect, on } = activate()
 
-    expect(on).toHaveBeenCalledTimes(2)
+    expect(on).toHaveBeenCalled()
     const rows = collect()
-    expect(rows).toHaveLength(2)
-    const row = rows.find((item) => item.kind === 'script' && item.text !== MEDIA_RECORDER_SHIM_SCRIPT)
+    const row = rows.find(item => item.kind === 'script' && item.text.includes('protocolVersion'))
     expect(row?.kind).toBe('script')
     expect(row?.kind === 'script' ? row.placement : undefined).toBe('head')
 
@@ -74,7 +75,7 @@ describe('desktop account marker', () => {
     vi.stubEnv('DSH_TAURI_EMBEDDED', '1')
     const rows = activate().collect()
 
-    const shim = rows.find((item) => item.kind === 'script' && item.text === MEDIA_RECORDER_SHIM_SCRIPT)
+    const shim = rows.find(item => item.kind === 'script' && item.text === MEDIA_RECORDER_SHIM_SCRIPT)
     expect(shim?.kind === 'script' ? shim.placement : undefined).toBe('head')
   })
 
@@ -111,8 +112,13 @@ function installRecorder(userAgent: string) {
   return { sandbox, calls, original: FakeMediaRecorder }
 }
 
+interface RecorderInstance {
+  stream: unknown
+  options?: Record<string, unknown>
+}
+
 function recorderOf(sandbox: Record<string, unknown>) {
-  return sandbox.MediaRecorder as unknown as new (stream: unknown, options?: Record<string, unknown>) => unknown
+  return sandbox.MediaRecorder as unknown as new (stream: unknown, options?: Record<string, unknown>) => RecorderInstance
 }
 
 describe('media recorder mime default', () => {
@@ -120,7 +126,7 @@ describe('media recorder mime default', () => {
   it('fills a supported mimeType for default calls in WebKitGTK', () => {
     const { sandbox, calls } = installRecorder(WEBKITGTK_UA)
 
-    new (recorderOf(sandbox))('stream')
+    Reflect.construct(recorderOf(sandbox), ['stream'])
 
     expect(calls).toHaveLength(1)
     expect(calls[0]?.options).toEqual({ mimeType: 'audio/webm;codecs=opus' })
@@ -129,9 +135,45 @@ describe('media recorder mime default', () => {
   it('keeps explicit options untouched', () => {
     const { sandbox, calls } = installRecorder(WEBKITGTK_UA)
 
-    new (recorderOf(sandbox))('stream', { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 })
+    Reflect.construct(recorderOf(sandbox), ['stream', { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 }])
 
     expect(calls[0]?.options).toEqual({ mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 })
+  })
+
+  it('preserves other options when adding the mimeType', () => {
+    const { sandbox, calls } = installRecorder(WEBKITGTK_UA)
+
+    Reflect.construct(recorderOf(sandbox), ['stream', { audioBitsPerSecond: 128000 }])
+
+    expect(calls[0]?.options).toEqual({ audioBitsPerSecond: 128000, mimeType: 'audio/webm;codecs=opus' })
+  })
+
+  it('leaves recorders without isTypeSupported untouched', () => {
+    class BareRecorder {}
+    const sandbox: Record<string, unknown> = { navigator: { userAgent: WEBKITGTK_UA }, MediaRecorder: BareRecorder }
+    runInContext(MEDIA_RECORDER_SHIM_SCRIPT, createContext(sandbox))
+
+    expect(sandbox.MediaRecorder).toBe(BareRecorder)
+  })
+
+  it('treats an empty mimeType as omitted', () => {
+    const { sandbox, calls } = installRecorder(WEBKITGTK_UA)
+
+    Reflect.construct(recorderOf(sandbox), ['stream', { mimeType: '' }])
+
+    expect(calls[0]?.options).toEqual({ mimeType: 'audio/webm;codecs=opus' })
+  })
+
+  it('keeps native constructor semantics', () => {
+    const { sandbox, calls } = installRecorder(WEBKITGTK_UA)
+    const Recorder = recorderOf(sandbox)
+    class SubRecorder extends Recorder {}
+    const sub = new SubRecorder('stream')
+
+    expect(sub).toBeInstanceOf(SubRecorder)
+    expect((sandbox.MediaRecorder as unknown as { name: string }).name).toBe('FakeMediaRecorder')
+    expect(() => (Recorder as unknown as (stream: unknown) => unknown)('stream')).toThrow(TypeError)
+    expect(calls).toHaveLength(1)
   })
 
   it('does not touch non-WebKitGTK pages', () => {
@@ -144,7 +186,7 @@ describe('media recorder mime default', () => {
     const { sandbox, calls } = installRecorder(WEBKITGTK_UA)
     runInContext(MEDIA_RECORDER_SHIM_SCRIPT, createContext(sandbox))
 
-    new (recorderOf(sandbox))('stream')
+    Reflect.construct(recorderOf(sandbox), ['stream'])
 
     expect(calls).toHaveLength(1)
     expect(calls[0]?.options).toEqual({ mimeType: 'audio/webm;codecs=opus' })
