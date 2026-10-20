@@ -1,11 +1,13 @@
 import type { ConnectionHost, HostContext } from './types'
 import process from 'node:process'
 import { PLUGIN_ID } from '../shared/constants'
+import { MEDIA_RECORDER_SHIM_SCRIPT } from './media-recorder-shim'
 import { server } from './server'
 import { gate } from './service/gate'
 
 const GATE_EFFECT = `${PLUGIN_ID}: gate`
 const ACCOUNT_EFFECT = `${PLUGIN_ID}: account desktop marker`
+const MEDIA_RECORDER_EFFECT = `${PLUGIN_ID}: media recorder mime default`
 const ROUTES_EFFECT = `${PLUGIN_ID}: routes`
 
 /**
@@ -33,5 +35,8 @@ export function apply(ctx: HostContext): void {
     ctx.effect(() => ctx.on('webserver/index-inject', (table) => {
       table.push({ kind: 'script', placement: 'head', text: ACCOUNT_MARKER_SCRIPT })
     }), ACCOUNT_EFFECT)
+    ctx.effect(() => ctx.on('webserver/index-inject', (table) => {
+      table.push({ kind: 'script', placement: 'head', text: MEDIA_RECORDER_SHIM_SCRIPT })
+    }), MEDIA_RECORDER_EFFECT)
   }
 }
